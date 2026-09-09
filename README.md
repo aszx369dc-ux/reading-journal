@@ -17,7 +17,7 @@ python3 -m http.server 4173
 
 ## 部署 GitHub Pages
 
-這個 repository 使用 GitHub Actions 發布到 GitHub Pages。網站沒有 build command；部署內容只包含 `index.html`、`styles.css`、`app.js`、`config.js`。`config.js` 只包含可公開的 Supabase URL 與 publishable/anon key，絕對不能包含 service_role key。
+這個 repository 使用 GitHub Actions 發布到 GitHub Pages。網站沒有 build command；部署內容只包含 `index.html`、`styles.css`、`app.js`、`config.js`。`config.js` 只包含可公開的 Supabase URL 與 publishable/anon key，絕對不能包含 service_role key。每次推送到 `main` 都會重新部署。
 
 正式網址格式為 `https://<github-帳號>.github.io/<repository>/`。部署後請把這個網址加入 Supabase Authentication 的 Site URL 與 Redirect URLs。
 
