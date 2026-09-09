@@ -183,7 +183,17 @@
       email: email,
       options: { emailRedirectTo: window.location.origin + window.location.pathname }
     });
-    setAuthMessage(result.error ? "登入連結寄送失敗，請稍後再試。" : "請查看你的 Email，點擊登入連結。返回此頁即可開始書寫。");
+    if (result.error) {
+      var errorDetails = {
+        message: result.error.message || "",
+        code: result.error.code || "",
+        status: result.error.status || ""
+      };
+      console.error("Magic link request failed", errorDetails);
+      setAuthMessage("登入連結寄送失敗。message: " + errorDetails.message + "；code: " + errorDetails.code + "；status: " + errorDetails.status);
+      return;
+    }
+    setAuthMessage("請查看你的 Email，點擊登入連結。返回此頁即可開始書寫。");
   }
 
   async function signOut() {
