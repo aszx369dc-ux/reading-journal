@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f3ee" />
+    <title>每日閱讀自由書寫</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section id="auth-view" class="view auth-view" aria-labelledby="auth-title" hidden>
+        <div class="auth-page">
+          <p class="eyebrow">每日閱讀</p>
+          <h1 id="auth-title">回到今天</h1>
+          <p class="auth-copy">用 Email 收一封登入連結，繼續你的閱讀日記。</p>
+          <form id="auth-form" class="auth-form">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
+            <button class="primary-button" type="submit">寄送登入連結</button>
+          </form>
+          <p id="auth-message" class="status-message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="app-view" class="view" aria-labelledby="today-label" hidden>
+        <header class="topbar">
+          <span class="eyebrow">每日閱讀</span>
+          <div class="account-actions">
+            <span id="account-label" class="account-label"></span>
+            <button id="history-link" class="text-link" type="button">查看過去的日子 <span aria-hidden="true">→</span></button>
+          </div>
+        </header>
+
+        <div class="writing-page">
+          <p id="today-label" class="date" aria-live="polite"></p>
+          <label class="writing-label" for="entry-content">今天讀到了什麼？</label>
+          <textarea id="entry-content" spellcheck="true" autocomplete="off" disabled></textarea>
+          <div class="save-row">
+            <button id="save-button" class="primary-button" type="button" disabled>儲存今天</button>
+            <p id="save-message" class="save-message" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="history-view" class="view history-view" aria-labelledby="history-title" hidden>
+        <header class="topbar">
+          <button id="back-link" class="text-link" type="button"><span aria-hidden="true">←</span> 回到今天</button>
+          <div class="account-actions">
+            <span id="history-account-label" class="account-label"></span>
+            <button id="sign-out-button" class="text-link" type="button">登出</button>
+          </div>
+        </header>
+        <div class="history-page">
+          <h1 id="history-title">過去的日子</h1>
+          <div id="history-list" class="history-list"></div>
+          <section id="migration-panel" class="migration-panel" aria-labelledby="migration-title" hidden>
+            <h2 id="migration-title">這台裝置上的舊日記</h2>
+            <p>發現尚未同步的舊日記。確認登入帳號後，可匯入雲端。</p>
+            <button id="migration-button" class="quiet-button" type="button">匯入這台裝置的舊日記</button>
+          </section>
+          <section class="data-management" aria-labelledby="data-management-title">
+            <h2 id="data-management-title">資料管理</h2>
+            <div class="data-actions">
+              <button id="export-button" class="quiet-button" type="button">匯出備份</button>
+              <button id="import-button" class="quiet-button" type="button">從備份還原</button>
+              <button id="sign-out-secondary" class="quiet-button" type="button">登出</button>
+              <input id="import-file" type="file" accept="application/json,.json" hidden />
+            </div>
+            <p id="data-message" class="data-message" role="status" aria-live="polite"></p>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="app.js" defer></script>
+  </body>
+</html>

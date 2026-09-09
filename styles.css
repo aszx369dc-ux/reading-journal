@@ -1,0 +1,81 @@
+:root {
+  color-scheme: light;
+  --ink: #292a27;
+  --muted: #8d8d84;
+  --faint: #b8b7ae;
+  --paper: #fbfaf7;
+  --ground: #f2f0eb;
+  --line: #dedcd4;
+  --accent: #455b4a;
+  --accent-dark: #304435;
+  --error: #8b5148;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: var(--ground); color: var(--ink); font-family: "DM Sans", "Noto Sans TC", sans-serif; }
+button, textarea, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled, textarea:disabled { cursor: wait; opacity: .58; }
+.shell { min-height: 100vh; padding: 28px 5vw 56px; }
+.view { max-width: 960px; margin: 0 auto; }
+.view[hidden] { display: none; }
+.topbar { display: flex; justify-content: space-between; align-items: center; min-height: 36px; gap: 20px; }
+.eyebrow { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
+.account-actions { display: flex; align-items: center; gap: 22px; min-width: 0; }
+.account-label { overflow: hidden; max-width: 220px; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.text-link { border: 0; padding: 8px 0; background: transparent; color: var(--muted); font-size: 13px; transition: color .2s ease; }
+.text-link:hover, .text-link:focus-visible, .quiet-button:hover, .quiet-button:focus-visible { color: var(--ink); }
+.writing-page { min-height: min(710px, calc(100vh - 120px)); margin-top: 58px; padding: clamp(38px, 8vw, 88px) clamp(24px, 9vw, 112px) 42px; background: var(--paper); box-shadow: 0 12px 40px rgba(52, 49, 39, .045); border-top: 1px solid rgba(255,255,255,.8); }
+.date { margin: 0 0 clamp(56px, 10vh, 106px); color: var(--ink); font-family: "Noto Serif TC", serif; font-size: clamp(23px, 3vw, 32px); line-height: 1.45; letter-spacing: .02em; }
+.writing-label { display: block; margin-bottom: 15px; color: var(--faint); font-family: "Noto Serif TC", serif; font-size: 16px; }
+textarea { display: block; width: 100%; min-height: 370px; resize: vertical; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink); font-family: "Noto Serif TC", serif; font-size: 18px; line-height: 2; }
+textarea:focus-visible { outline: 1px solid var(--line); outline-offset: 9px; }
+.save-row { display: flex; align-items: center; gap: 18px; margin-top: 32px; }
+.primary-button { border: 0; border-radius: 2px; padding: 13px 26px; background: var(--accent); color: #fff; font-size: 14px; transition: background .2s ease, transform .2s ease; }
+.primary-button:hover { background: var(--accent-dark); transform: translateY(-1px); }
+.primary-button:focus-visible, .text-link:focus-visible, .history-item:focus-visible, .quiet-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.save-message, .status-message { min-height: 1.5em; margin: 0; color: var(--accent); font-family: "Noto Serif TC", serif; font-size: 14px; }
+.history-page { margin-top: 78px; }
+.history-page h1 { margin: 0 0 48px; font-family: "Noto Serif TC", serif; font-size: clamp(28px, 4vw, 40px); font-weight: 500; }
+.history-list { border-top: 1px solid var(--line); }
+.history-item { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 25px 4px 27px; background: transparent; text-align: left; color: inherit; }
+.history-item-date { display: block; margin-bottom: 10px; color: var(--muted); font-family: "Noto Serif TC", serif; font-size: 14px; }
+.history-item-preview { display: -webkit-box; overflow: hidden; max-width: 680px; color: var(--ink); font-family: "Noto Serif TC", serif; font-size: 17px; line-height: 1.8; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.empty-state { padding: 32px 4px; color: var(--muted); font-family: "Noto Serif TC", serif; }
+.history-detail { padding-top: 4px; }
+.detail-date { margin: 0 0 46px; color: var(--muted); font-family: "Noto Serif TC", serif; font-size: 15px; }
+.detail-content { white-space: pre-wrap; font-family: "Noto Serif TC", serif; font-size: 18px; line-height: 2.1; }
+.detail-back { margin-bottom: 32px; }
+.data-management, .migration-panel { margin-top: 64px; padding-top: 24px; border-top: 1px solid rgba(222, 220, 212, .72); }
+.migration-panel { margin-top: 88px; }
+.data-management h2, .migration-panel h2 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 400; letter-spacing: .08em; }
+.migration-panel p { margin: 0 0 14px; color: var(--muted); font-family: "Noto Serif TC", serif; font-size: 13px; line-height: 1.8; }
+.data-actions { display: flex; flex-wrap: wrap; gap: 18px; }
+.quiet-button { border: 0; padding: 5px 0; background: transparent; color: var(--muted); font-size: 12px; transition: color .2s ease; }
+.data-message { min-height: 1.5em; margin: 12px 0 0; color: var(--accent); font-family: "Noto Serif TC", serif; font-size: 13px; }
+.auth-view { min-height: calc(100vh - 84px); display: grid; place-items: center; }
+.auth-page { width: min(100%, 420px); padding: 42px 0; }
+.auth-page h1 { margin: 54px 0 16px; font-family: "Noto Serif TC", serif; font-size: 34px; font-weight: 500; }
+.auth-copy { margin: 0 0 32px; color: var(--muted); font-family: "Noto Serif TC", serif; line-height: 1.9; }
+.auth-form { display: grid; gap: 11px; }
+.auth-form label { color: var(--muted); font-size: 13px; }
+.auth-form input { width: 100%; border: 1px solid var(--line); border-radius: 2px; padding: 13px 14px; background: var(--paper); color: var(--ink); outline: 0; }
+.auth-form input:focus { border-color: var(--accent); }
+.auth-form .primary-button { margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .shell { padding: 20px 18px 36px; }
+  .topbar { align-items: flex-start; }
+  .account-actions { align-items: flex-end; flex-direction: column; gap: 3px; }
+  .account-label { max-width: 160px; }
+  .writing-page { min-height: calc(100vh - 104px); margin-top: 36px; padding: 36px 23px 30px; }
+  .date { margin-bottom: 66px; font-size: 22px; }
+  textarea { min-height: 48vh; font-size: 17px; }
+  .save-row { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .primary-button { width: 100%; }
+  .history-page { margin-top: 52px; }
+  .history-page h1 { margin-bottom: 36px; }
+  .data-management, .migration-panel { margin-top: 52px; }
+  .data-actions { gap: 12px 16px; }
+  .auth-page { padding: 20px 4px; }
+}
