@@ -1,309 +1,365 @@
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "daily-reading-journal-v1";
-  var TIME_ZONE = "Asia/Taipei";
-  var config = window.SUPABASE_CONFIG || {};
-  var supabaseClient = null;
-  var currentUser = null;
-  var currentDateKey = "";
-  var weekdayNames = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+  var DB_NAME = "reading-journal-local";
+  var DB_VERSION = 1;
+  var LEGACY_KEY = "daily-reading-journal-v1";
+  var BACKUP_FORMAT = "reading-journal";
+  var BACKUP_VERSION = 2;
+  var AUTOSAVE_DELAY = 650;
+  var db;
+  var currentDate = "";
+  var composing = false;
+  var autosaveTimer = null;
+  var writeChain = Promise.resolve();
+  var switchToken = 0;
+  var pendingImport = null;
 
-  var authView = document.getElementById("auth-view");
-  var appView = document.getElementById("app-view");
-  var historyView = document.getElementById("history-view");
-  var authForm = document.getElementById("auth-form");
-  var authMessage = document.getElementById("auth-message");
-  var emailInput = document.getElementById("email");
-  var dateLabel = document.getElementById("today-label");
-  var content = document.getElementById("entry-content");
+  var dateInput = document.getElementById("entry-date");
+  var dateHeading = document.getElementById("date-heading");
+  var textarea = document.getElementById("entry-content");
   var saveButton = document.getElementById("save-button");
-  var saveMessage = document.getElementById("save-message");
+  var saveStatus = document.getElementById("save-status");
+  var draftBadge = document.getElementById("draft-badge");
   var historyList = document.getElementById("history-list");
-  var dataMessage = document.getElementById("data-message");
-  var migrationPanel = document.getElementById("migration-panel");
-  var accountLabel = document.getElementById("account-label");
-  var historyAccountLabel = document.getElementById("history-account-label");
+  var entryCount = document.getElementById("entry-count");
+  var dataStatus = document.getElementById("data-status");
+  var importFile = document.getElementById("import-file");
+  var exportButton = document.getElementById("export-button");
+  var importButton = document.getElementById("import-button");
+  var importDialog = document.getElementById("import-dialog");
+  var importSummary = document.getElementById("import-summary");
+  var conflictList = document.getElementById("conflict-list");
 
-  function isConfigured() {
-    return typeof config.url === "string" && config.url.indexOf("https://") === 0 &&
-      typeof config.anonKey === "string" && config.anonKey.length > 20 &&
-      config.anonKey.indexOf("YOUR_") !== 0;
+  function localToday() {
+    var now = new Date();
+    var year = String(now.getFullYear());
+    var month = String(now.getMonth() + 1).padStart(2, "0");
+    var day = String(now.getDate()).padStart(2, "0");
+    return year + "-" + month + "-" + day;
   }
 
-  function showOnly(view) {
-    [authView, appView, historyView].forEach(function (item) { item.hidden = item !== view; });
+  function isValidDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    var parts = value.split("-").map(Number);
+    var parsed = new Date(parts[0], parts[1] - 1, parts[2]);
+    return parsed.getFullYear() === parts[0] && parsed.getMonth() === parts[1] - 1 && parsed.getDate() === parts[2];
   }
 
-  function setAuthMessage(message) { authMessage.textContent = message; }
-  function setDataMessage(message) { dataMessage.textContent = message; }
-
-  function dateKeyFromParts(parts) {
-    return [parts.year, parts.month, parts.day].join("-");
+  function displayDate(value) {
+    var parts = value.split("-").map(Number);
+    return new Intl.DateTimeFormat("zh-Hant-TW", { year: "numeric", month: "long", day: "numeric", weekday: "long" })
+      .format(new Date(parts[0], parts[1] - 1, parts[2], 12));
   }
 
-  function todayKey() {
-    var parts = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-    var values = {};
-    parts.forEach(function (part) { values[part.type] = part.value; });
-    return dateKeyFromParts(values);
+  function setStatus(element, message, isError) {
+    element.textContent = message;
+    element.classList.toggle("error", Boolean(isError));
   }
 
-  function displayDate(key) {
-    var date = new Date(key + "T12:00:00+08:00");
-    var parts = new Intl.DateTimeFormat("zh-Hant-TW", { timeZone: TIME_ZONE, year: "numeric", month: "numeric", day: "numeric", weekday: "long" }).formatToParts(date);
-    var values = {};
-    parts.forEach(function (part) { values[part.type] = part.value; });
-    var weekday = values.weekday || weekdayNames[date.getDay()];
-    return values.year + " 年 " + values.month + " 月 " + values.day + " 日・" + weekday;
+  function openDatabase() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+      var request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = function () {
+        var database = request.result;
+        if (!database.objectStoreNames.contains("entries")) database.createObjectStore("entries", { keyPath: "date" });
+        if (!database.objectStoreNames.contains("drafts")) database.createObjectStore("drafts", { keyPath: "date" });
+      };
+      request.onsuccess = function () {
+        db = request.result;
+        db.onversionchange = function () { db.close(); };
+        resolve(db);
+      };
+      request.onerror = function () { reject(request.error || new Error("Cannot open IndexedDB")); };
+      request.onblocked = function () { reject(new Error("Database upgrade blocked")); };
+    });
   }
 
-  function isValidDateKey(key) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
-    var parts = key.split("-").map(Number);
-    var date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-    return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
+  function requestResult(request) {
+    return new Promise(function (resolve, reject) {
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error); };
+    });
   }
 
-  function isValidEntryMap(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    return Object.keys(value).every(function (key) { return isValidDateKey(key) && typeof value[key] === "string"; });
+  function getRecord(store, key) {
+    return requestResult(db.transaction(store, "readonly").objectStore(store).get(key));
   }
 
-  function readLegacyEntries() {
+  function getAll(store) {
+    return requestResult(db.transaction(store, "readonly").objectStore(store).getAll());
+  }
+
+  function transactionComplete(transaction) {
+    return new Promise(function (resolve, reject) {
+      transaction.oncomplete = function () { resolve(); };
+      transaction.onerror = function () { reject(transaction.error || new Error("IndexedDB transaction failed")); };
+      transaction.onabort = function () { reject(transaction.error || new Error("IndexedDB transaction aborted")); };
+    });
+  }
+
+  function putDraft(date, content) {
+    var transaction = db.transaction("drafts", "readwrite");
+    transaction.objectStore("drafts").put({ date: date, content: content, updatedAt: new Date().toISOString() });
+    return transactionComplete(transaction);
+  }
+
+  function queueWrite(operation) {
+    writeChain = writeChain.catch(function () {}).then(operation);
+    return writeChain;
+  }
+
+  function queueDraft(date, content, announce) {
+    return queueWrite(function () { return putDraft(date, content); }).then(function () {
+      if (announce && date === currentDate && content === textarea.value) setStatus(saveStatus, "草稿已自動保存", false);
+    }).catch(function (error) {
+      console.error("Draft save failed", error);
+      if (date === currentDate) setStatus(saveStatus, "草稿保存失敗，文字仍保留在畫面上。請匯出或複製文字。", true);
+      throw error;
+    });
+  }
+
+  function scheduleAutosave() {
+    window.clearTimeout(autosaveTimer);
+    var date = currentDate;
+    autosaveTimer = window.setTimeout(function () {
+      autosaveTimer = null;
+      queueDraft(date, textarea.value, true).catch(function () {});
+    }, AUTOSAVE_DELAY);
+  }
+
+  function flushDraft(date, content) {
+    window.clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    return queueDraft(date, content, false);
+  }
+
+  async function loadDate(date, skipFlush) {
+    var token = ++switchToken;
+    var oldDate = currentDate;
+    var oldContent = textarea.value;
+    textarea.disabled = true;
+    saveButton.disabled = true;
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      var entries = JSON.parse(raw);
-      if (!isValidEntryMap(entries)) return null;
-      var nonBlank = {};
-      Object.keys(entries).forEach(function (key) {
-        if (entries[key].trim()) nonBlank[key] = entries[key];
-      });
-      return Object.keys(nonBlank).length ? nonBlank : null;
-    } catch (error) { return null; }
-  }
-
-  async function loadToday() {
-    currentDateKey = todayKey();
-    dateLabel.textContent = displayDate(currentDateKey);
-    content.value = "";
-    saveButton.disabled = true;
-    var result = await supabaseClient.from("reading_entries").select("content").eq("entry_date", currentDateKey).maybeSingle();
-    if (result.error) throw result.error;
-    content.value = result.data ? result.data.content : "";
-    content.disabled = false;
-    saveButton.disabled = false;
-  }
-
-  async function saveToday() {
-    saveButton.disabled = true;
-    saveMessage.textContent = "儲存中⋯";
-    var result = await supabaseClient.from("reading_entries").upsert({
-      user_id: currentUser.id,
-      entry_date: currentDateKey,
-      content: content.value
-    }, { onConflict: "user_id,entry_date" }).select().single();
-    saveButton.disabled = false;
-    if (result.error) {
-      saveMessage.textContent = result.error.code === "23514" ? "請先寫下一點內容。" : "儲存失敗，請稍後再試。";
-      return;
+      if (!skipFlush && db && oldDate) await flushDraft(oldDate, oldContent);
+      var results = await Promise.all([getRecord("entries", date), getRecord("drafts", date)]);
+      if (token !== switchToken) return;
+      currentDate = date;
+      dateInput.value = date;
+      dateHeading.textContent = displayDate(date);
+      var entry = results[0];
+      var draft = results[1];
+      textarea.value = draft ? draft.content : (entry ? entry.content : "");
+      draftBadge.hidden = !draft;
+      setStatus(saveStatus, draft ? "已載入自動保存的草稿" : (entry ? "已載入這一天的筆記" : "可以開始書寫"), false);
+      textarea.disabled = false;
+      saveButton.disabled = false;
+    } catch (error) {
+      console.error("Date change failed", error);
+      dateInput.value = oldDate;
+      textarea.value = oldContent;
+      textarea.disabled = false;
+      saveButton.disabled = false;
+      setStatus(saveStatus, "切換前無法保存目前草稿，因此沒有離開這一天。文字仍保留。", true);
     }
-    saveMessage.textContent = "今天留下來了。";
   }
 
-  async function fetchEntries() {
-    var result = await supabaseClient.from("reading_entries").select("entry_date,content,created_at,updated_at").order("entry_date", { ascending: false });
-    if (result.error) throw result.error;
-    return result.data || [];
+  async function saveEntry() {
+    var date = currentDate;
+    var content = textarea.value;
+    window.clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    saveButton.disabled = true;
+    setStatus(saveStatus, "儲存中⋯", false);
+    try {
+      await queueWrite(function () {
+        var transaction = db.transaction(["entries", "drafts"], "readwrite");
+        transaction.objectStore("entries").put({ date: date, content: content, updatedAt: new Date().toISOString() });
+        transaction.objectStore("drafts").delete(date);
+        return transactionComplete(transaction);
+      });
+      if (date === currentDate && content === textarea.value) {
+        draftBadge.hidden = true;
+        setStatus(saveStatus, "已儲存", false);
+      } else if (date === currentDate) {
+        scheduleAutosave();
+        draftBadge.hidden = false;
+        setStatus(saveStatus, "先前內容已儲存；新輸入將另存草稿", false);
+      }
+      await renderHistory();
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+    } catch (error) {
+      console.error("Entry save failed", error);
+      if (date === currentDate) setStatus(saveStatus, "儲存失敗，文字仍保留在畫面上。請再試一次或先複製文字。", true);
+    } finally {
+      saveButton.disabled = false;
+    }
   }
 
-  function renderHistory(entries) {
-    historyList.innerHTML = "";
+  async function renderHistory() {
+    var entries = await getAll("entries");
+    entries.sort(function (a, b) { return b.date.localeCompare(a.date); });
+    historyList.textContent = "";
+    entryCount.textContent = entries.length ? entries.length + " 篇" : "";
     if (!entries.length) {
-      historyList.innerHTML = '<p class="empty-state">還沒有留下任何日子。</p>';
+      var empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "還沒有正式儲存的筆記。草稿會留在各自的日期中。";
+      historyList.appendChild(empty);
       return;
     }
     entries.forEach(function (entry) {
       var button = document.createElement("button");
+      var date = document.createElement("span");
+      var preview = document.createElement("span");
       button.type = "button";
       button.className = "history-item";
-      button.innerHTML = '<span class="history-item-date"></span><span class="history-item-preview"></span>';
-      button.querySelector(".history-item-date").textContent = displayDate(entry.entry_date);
-      button.querySelector(".history-item-preview").textContent = entry.content;
-      button.addEventListener("click", function () { showDetail(entry); });
+      date.className = "history-date";
+      preview.className = "history-preview";
+      date.textContent = displayDate(entry.date);
+      preview.textContent = entry.content || "（空白筆記）";
+      button.appendChild(date);
+      button.appendChild(preview);
+      button.addEventListener("click", function () { loadDate(entry.date).then(function () { window.scrollTo({ top: 0, behavior: "smooth" }); }); });
       historyList.appendChild(button);
     });
   }
 
-  function showDetail(entry) {
-    historyList.innerHTML = "";
-    var detail = document.createElement("article");
-    detail.className = "history-detail";
-    detail.innerHTML = '<button type="button" class="text-link detail-back"><span aria-hidden="true">←</span> 返回日子列表</button><p class="detail-date"></p><div class="detail-content"></div>';
-    detail.querySelector(".detail-date").textContent = displayDate(entry.entry_date);
-    detail.querySelector(".detail-content").textContent = entry.content;
-    detail.querySelector("button").addEventListener("click", function () { loadHistory(); });
-    historyList.appendChild(detail);
+  function validRecordArray(value) {
+    return Array.isArray(value) && value.every(function (record) {
+      return record && isValidDate(record.date) && typeof record.content === "string" &&
+        (record.updatedAt === undefined || typeof record.updatedAt === "string");
+    }) && new Set(value.map(function (record) { return record.date; })).size === value.length;
   }
 
-  async function loadHistory() {
-    setDataMessage("");
-    historyList.innerHTML = '<p class="empty-state">讀取中⋯</p>';
-    try {
-      renderHistory(await fetchEntries());
-      migrationPanel.hidden = !readLegacyEntries();
-    } catch (error) {
-      historyList.innerHTML = '<p class="empty-state">目前無法讀取日記，請稍後再試。</p>';
-      setDataMessage("讀取失敗，請檢查 Supabase 設定。");
+  function parseBackup(value) {
+    if (value && value.format === BACKUP_FORMAT && value.version === BACKUP_VERSION && validRecordArray(value.entries) && validRecordArray(value.drafts || [])) {
+      return { entries: value.entries, drafts: value.drafts || [], source: "v2" };
     }
-  }
-
-  async function showHistory() {
-    showOnly(historyView);
-    await loadHistory();
-    window.scrollTo(0, 0);
-  }
-
-  async function showHome() {
-    showOnly(appView);
-    try { await loadToday(); } catch (error) { saveMessage.textContent = "目前無法讀取今天的日記。"; }
-    window.scrollTo(0, 0);
-  }
-
-  async function sendMagicLink(event) {
-    event.preventDefault();
-    if (!isConfigured()) {
-      setAuthMessage("請先完成 config.js 設定。");
-      return;
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).every(function (key) { return isValidDate(key) && typeof value[key] === "string"; })) {
+      return { entries: Object.keys(value).map(function (key) { return { date: key, content: value[key] }; }), drafts: [], source: "legacy" };
     }
-    var email = emailInput.value.trim();
-    setAuthMessage("登入連結寄送中⋯");
-    var result = await supabaseClient.auth.signInWithOtp({
-      email: email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    });
-    if (result.error) {
-      var errorDetails = {
-        message: result.error.message || "",
-        code: result.error.code || "",
-        status: result.error.status || ""
-      };
-      console.error("Magic link request failed", errorDetails);
-      setAuthMessage("登入連結寄送失敗。message: " + errorDetails.message + "；code: " + errorDetails.code + "；status: " + errorDetails.status);
-      return;
-    }
-    setAuthMessage("請查看你的 Email，點擊登入連結。返回此頁即可開始書寫。");
-  }
-
-  async function signOut() {
-    await supabaseClient.auth.signOut();
-    showOnly(authView);
-    setAuthMessage("已登出。");
+    throw new Error("Invalid backup format");
   }
 
   async function exportBackup() {
     try {
-      var entries = await fetchEntries();
-      if (!entries.length) { setDataMessage("目前沒有可以備份的日記。"); return; }
-      var backup = {};
-      entries.forEach(function (entry) { backup[entry.entry_date] = entry.content; });
-      var blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      await flushDraft(currentDate, textarea.value);
+      var values = await Promise.all([getAll("entries"), getAll("drafts")]);
+      var backup = { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), entries: values[0], drafts: values[1] };
+      var url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
       var link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "reading-journal-backup-" + todayKey() + ".json";
+      link.href = url;
+      link.download = "reading-journal-backup-" + localToday() + ".json";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(link.href);
-      setDataMessage("備份已下載。");
-    } catch (error) { setDataMessage("備份失敗，請稍後再試。"); }
-  }
-
-  function readBackupFile(file) {
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = async function () {
-      var backup;
-      try { backup = JSON.parse(reader.result); } catch (error) {
-        setDataMessage("這不是有效的 JSON 備份檔。");
-        return;
-      }
-      if (!isValidEntryMap(backup)) {
-        setDataMessage("備份格式不正確，沒有更改目前資料。");
-        return;
-      }
-      if (!window.confirm("這會以備份內容取代目前的閱讀日記，確定要繼續嗎？")) return;
-      try {
-        var rows = Object.keys(backup).filter(function (key) { return backup[key].trim(); }).map(function (key) {
-          return { user_id: currentUser.id, entry_date: key, content: backup[key] };
-        });
-        var existing = await fetchEntries();
-        var upsertResult = rows.length ? await supabaseClient.from("reading_entries").upsert(rows, { onConflict: "user_id,entry_date" }) : { error: null };
-        if (upsertResult.error) throw upsertResult.error;
-        var keys = {};
-        rows.forEach(function (row) { keys[row.entry_date] = true; });
-        for (var index = 0; index < existing.length; index += 1) {
-          if (!keys[existing[index].entry_date]) {
-            var deleteResult = await supabaseClient.from("reading_entries").delete().eq("user_id", currentUser.id).eq("entry_date", existing[index].entry_date);
-            if (deleteResult.error) throw deleteResult.error;
-          }
-        }
-        window.location.reload();
-      } catch (error) { setDataMessage("還原失敗，現有資料未完成變更。"); }
-    };
-    reader.onerror = function () { setDataMessage("備份檔讀取失敗，沒有更改目前資料。"); };
-    reader.readAsText(file);
-  }
-
-  async function migrateLegacy() {
-    var legacy = readLegacyEntries();
-    if (!legacy || !window.confirm("這會把這台裝置上的舊日記匯入目前登入帳號，確定要繼續嗎？")) return;
-    var rows = Object.keys(legacy).map(function (key) { return { user_id: currentUser.id, entry_date: key, content: legacy[key] }; });
-    var result = await supabaseClient.from("reading_entries").upsert(rows, { onConflict: "user_id,entry_date" });
-    if (result.error) { setDataMessage("舊日記匯入失敗，原本的裝置資料仍保留。"); return; }
-    if (window.confirm("舊日記已匯入。要移除這台裝置上的舊資料嗎？")) localStorage.removeItem(STORAGE_KEY);
-    migrationPanel.hidden = true;
-    setDataMessage("舊日記已匯入。");
-    await loadHistory();
-  }
-
-  async function initialize() {
-    if (!isConfigured()) {
-      showOnly(authView);
-      setAuthMessage("請先複製 config.example.js 為 config.js，填入 Supabase 設定。");
-      return;
+      link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      setStatus(dataStatus, "已匯出全部筆記與草稿。", false);
+    } catch (error) {
+      console.error("Export failed", error);
+      setStatus(dataStatus, "匯出失敗，沒有變更現有資料。", true);
     }
-    supabaseClient = window.supabase.createClient(config.url, config.anonKey);
-    supabaseClient.auth.onAuthStateChange(function (event, session) {
-      currentUser = session ? session.user : null;
-      if (!currentUser) {
-        showOnly(authView);
-        return;
-      }
-      accountLabel.textContent = currentUser.email || "已登入";
-      historyAccountLabel.textContent = currentUser.email || "已登入";
-      showOnly(appView);
-      loadToday().catch(function () { saveMessage.textContent = "目前無法讀取今天的日記。"; });
-    });
-    var sessionResult = await supabaseClient.auth.getSession();
-    if (sessionResult.error) { setAuthMessage("登入狀態讀取失敗。"); return; }
-    currentUser = sessionResult.data.session ? sessionResult.data.session.user : null;
-    if (currentUser) {
-      accountLabel.textContent = currentUser.email || "已登入";
-      historyAccountLabel.textContent = currentUser.email || "已登入";
-      showOnly(appView);
-      try { await loadToday(); } catch (error) { saveMessage.textContent = "目前無法讀取今天的日記。"; }
-    } else showOnly(authView);
   }
 
-  authForm.addEventListener("submit", sendMagicLink);
-  saveButton.addEventListener("click", saveToday);
-  document.getElementById("history-link").addEventListener("click", showHistory);
-  document.getElementById("back-link").addEventListener("click", showHome);
-  document.getElementById("export-button").addEventListener("click", exportBackup);
-  document.getElementById("import-button").addEventListener("click", function () { document.getElementById("import-file").click(); });
-  document.getElementById("import-file").addEventListener("change", function (event) { readBackupFile(event.target.files[0]); event.target.value = ""; });
-  document.getElementById("migration-button").addEventListener("click", migrateLegacy);
-  document.getElementById("sign-out-button").addEventListener("click", signOut);
-  document.getElementById("sign-out-secondary").addEventListener("click", signOut);
-  initialize();
+  async function prepareImport(file) {
+    if (!file) return;
+    try {
+      await flushDraft(currentDate, textarea.value);
+      var parsed = parseBackup(JSON.parse(await file.text()));
+      var current = await Promise.all([getAll("entries"), getAll("drafts")]);
+      var currentDates = new Set(current[0].concat(current[1]).map(function (item) { return item.date; }));
+      var incomingDates = new Set(parsed.entries.concat(parsed.drafts).map(function (item) { return item.date; }));
+      var conflictDates = Array.from(incomingDates).filter(function (date) { return currentDates.has(date); }).sort().reverse();
+      pendingImport = { parsed: parsed, conflicts: new Set(conflictDates), incomingDates: incomingDates };
+      importSummary.textContent = "備份包含 " + parsed.entries.length + " 篇筆記與 " + parsed.drafts.length + " 份草稿。" +
+        (conflictDates.length ? "其中 " + conflictDates.length + " 個日期與目前筆記或草稿衝突，請明確選擇處理方式。" : "沒有日期衝突。請確認匯入。") +
+        (parsed.source === "legacy" ? "這是舊版 JSON 格式，會安全轉換，原檔不受影響。" : "");
+      conflictList.textContent = "";
+      conflictDates.forEach(function (date) { var row = document.createElement("div"); row.textContent = displayDate(date); conflictList.appendChild(row); });
+      document.getElementById("import-skip").textContent = conflictDates.length ? "保留目前版本並匯入其餘" : "匯入";
+      document.getElementById("import-overwrite").hidden = !conflictDates.length;
+      importDialog.showModal();
+    } catch (error) {
+      console.error("Import validation failed", error);
+      setStatus(dataStatus, "備份格式無效或檔案無法讀取；目前資料完全未變更。", true);
+    }
+  }
+
+  async function applyImport(overwrite) {
+    if (!pendingImport) return;
+    var payload = pendingImport;
+    pendingImport = null;
+    try {
+      await flushDraft(currentDate, textarea.value);
+      await queueWrite(function () {
+        var transaction = db.transaction(["entries", "drafts"], "readwrite");
+        var entryStore = transaction.objectStore("entries");
+        var draftStore = transaction.objectStore("drafts");
+        if (overwrite) payload.incomingDates.forEach(function (date) { entryStore.delete(date); draftStore.delete(date); });
+        payload.parsed.entries.forEach(function (item) {
+          if (overwrite || !payload.conflicts.has(item.date)) entryStore.put({ date: item.date, content: item.content, updatedAt: item.updatedAt || new Date().toISOString() });
+        });
+        payload.parsed.drafts.forEach(function (item) {
+          if (overwrite || !payload.conflicts.has(item.date)) draftStore.put({ date: item.date, content: item.content, updatedAt: item.updatedAt || new Date().toISOString() });
+        });
+        return transactionComplete(transaction);
+      });
+      await renderHistory();
+      await loadDate(currentDate, true);
+      setStatus(dataStatus, overwrite ? "匯入完成；衝突日期已使用備份版本。" : "匯入完成；衝突日期保留目前版本。", false);
+    } catch (error) {
+      console.error("Import failed", error);
+      setStatus(dataStatus, "匯入失敗；單一資料庫交易已取消，請檢查備份後重試。", true);
+    }
+  }
+
+  async function migrateLegacyLocal() {
+    var raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return 0;
+    var legacy;
+    try { legacy = parseBackup(JSON.parse(raw)); } catch (error) { return 0; }
+    var existing = await getAll("entries");
+    var existingDates = new Set(existing.map(function (item) { return item.date; }));
+    var rows = legacy.entries.filter(function (item) { return !existingDates.has(item.date); });
+    if (!rows.length) return 0;
+    var transaction = db.transaction("entries", "readwrite");
+    rows.forEach(function (item) { transaction.objectStore("entries").put({ date: item.date, content: item.content, updatedAt: new Date().toISOString() }); });
+    await transactionComplete(transaction);
+    return rows.length;
+  }
+
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(function (error) { console.error("Service worker registration failed", error); });
+  }
+
+  textarea.addEventListener("compositionstart", function () { composing = true; window.clearTimeout(autosaveTimer); });
+  textarea.addEventListener("compositionend", function () { composing = false; draftBadge.hidden = false; scheduleAutosave(); });
+  textarea.addEventListener("input", function () { draftBadge.hidden = false; setStatus(saveStatus, "尚未正式儲存", false); if (!composing) scheduleAutosave(); });
+  dateInput.addEventListener("change", function () { if (isValidDate(dateInput.value) && dateInput.value !== currentDate) loadDate(dateInput.value); });
+  saveButton.addEventListener("click", saveEntry);
+  document.getElementById("today-button").addEventListener("click", function () { if (currentDate !== localToday()) loadDate(localToday()); });
+  exportButton.addEventListener("click", exportBackup);
+  importButton.addEventListener("click", function () { importFile.click(); });
+  importFile.addEventListener("change", function () { prepareImport(importFile.files[0]); importFile.value = ""; });
+  document.getElementById("import-skip").addEventListener("click", function () { applyImport(false); });
+  document.getElementById("import-overwrite").addEventListener("click", function () { applyImport(true); });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && db && !composing) flushDraft(currentDate, textarea.value).catch(function () {}); });
+  window.addEventListener("pagehide", function () { if (db && !composing) flushDraft(currentDate, textarea.value).catch(function () {}); });
+
+  openDatabase().then(async function () {
+    var migrated = await migrateLegacyLocal();
+    await loadDate(localToday(), true);
+    await renderHistory();
+    exportButton.disabled = false;
+    importButton.disabled = false;
+    if (migrated) setStatus(dataStatus, "已從這台瀏覽器的舊版資料安全複製 " + migrated + " 篇筆記；舊資料仍保留。", false);
+    registerServiceWorker();
+  }).catch(function (error) {
+    console.error("Initialization failed", error);
+    textarea.disabled = false;
+    setStatus(saveStatus, "無法開啟本機資料庫。文字可以先寫在畫面上，但無法保存；請勿關閉頁面並先複製文字。", true);
+  });
 }());

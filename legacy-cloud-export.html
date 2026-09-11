@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f0e8" />
+    <title>舊雲端筆記匯出</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar"><div><p class="eyebrow">資料搬移工具</p><h1>舊雲端筆記匯出</h1></div><a href="./">回到本機筆記</a></header>
+      <section class="editor-card">
+        <p>此頁只用來從既有 Supabase 帳號下載舊筆記，不會把新版的本機筆記上傳。它需要網路，完成搬移後可不再使用。</p>
+        <form id="legacy-auth-form">
+          <label for="legacy-email">原本登入使用的 Email</label>
+          <input id="legacy-email" type="email" autocomplete="email" required />
+          <button class="primary-button" type="submit">寄送登入連結</button>
+        </form>
+        <div class="backup-actions">
+          <button id="legacy-export" class="primary-button" type="button" disabled>下載舊雲端筆記 JSON</button>
+          <button id="legacy-signout" class="quiet-button" type="button" hidden>登出舊帳號</button>
+        </div>
+        <p id="legacy-status" class="status" role="status" aria-live="polite"></p>
+        <p><small>若登入信回到主頁而非此頁，請重新開啟這個匯出頁；同一瀏覽器中的登入狀態通常仍會保留。若 Supabase 不接受此頁為返回網址，需先把此頁網址加入專案的 Redirect URLs。</small></p>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="legacy-cloud-export.js" defer></script>
+  </body>
+</html>

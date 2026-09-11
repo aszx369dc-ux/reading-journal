@@ -2,81 +2,73 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f3ee" />
-    <title>每日閱讀自由書寫</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f0e8" />
+    <meta name="description" content="不需登入、只存在此裝置的每日閱讀筆記。" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="閱讀筆記" />
+    <title>每日閱讀筆記</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="shell">
-      <section id="auth-view" class="view auth-view" aria-labelledby="auth-title" hidden>
-        <div class="auth-page">
-          <p class="eyebrow">每日閱讀</p>
-          <h1 id="auth-title">回到今天</h1>
-          <p class="auth-copy">用 Email 收一封登入連結，繼續你的閱讀日記。</p>
-          <form id="auth-form" class="auth-form">
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" autocomplete="email" required />
-            <button class="primary-button" type="submit">寄送登入連結</button>
-          </form>
-          <p id="auth-message" class="status-message" role="status" aria-live="polite"></p>
+      <header class="topbar">
+        <div><p class="eyebrow">每日閱讀</p><h1>留下一點讀過的痕跡</h1></div>
+        <button id="today-button" class="text-button" type="button">回到今天</button>
+      </header>
+      <section class="editor-card" aria-labelledby="date-heading">
+        <div class="date-row">
+          <div>
+            <p id="date-heading" class="date-label"></p>
+            <label for="entry-date" class="sr-only">選擇日期</label>
+            <input id="entry-date" class="date-input" type="date" />
+          </div>
+          <span id="draft-badge" class="draft-badge" hidden>草稿</span>
+        </div>
+        <label class="writing-label" for="entry-content">今天讀到了什麼？</label>
+        <textarea id="entry-content" rows="14" spellcheck="true" autocomplete="off" enterkeyhint="enter" placeholder="自由寫下想記住的句子、念頭或感受⋯" disabled></textarea>
+        <div class="save-row">
+          <button id="save-button" class="primary-button" type="button" disabled>儲存今天</button>
+          <p id="save-status" class="status" role="status" aria-live="polite">正在開啟本機筆記⋯</p>
         </div>
       </section>
-
-      <section id="app-view" class="view" aria-labelledby="today-label" hidden>
-        <header class="topbar">
-          <span class="eyebrow">每日閱讀</span>
-          <div class="account-actions">
-            <span id="account-label" class="account-label"></span>
-            <button id="history-link" class="text-link" type="button">查看過去的日子 <span aria-hidden="true">→</span></button>
-          </div>
-        </header>
-
-        <div class="writing-page">
-          <p id="today-label" class="date" aria-live="polite"></p>
-          <label class="writing-label" for="entry-content">今天讀到了什麼？</label>
-          <textarea id="entry-content" spellcheck="true" autocomplete="off" disabled></textarea>
-          <div class="save-row">
-            <button id="save-button" class="primary-button" type="button" disabled>儲存今天</button>
-            <p id="save-message" class="save-message" role="status" aria-live="polite"></p>
-          </div>
-        </div>
+      <section class="history-section" aria-labelledby="history-heading">
+        <div class="section-heading"><h2 id="history-heading">過去的日子</h2><span id="entry-count" class="count"></span></div>
+        <div id="history-list" class="history-list"></div>
       </section>
-
-      <section id="history-view" class="view history-view" aria-labelledby="history-title" hidden>
-        <header class="topbar">
-          <button id="back-link" class="text-link" type="button"><span aria-hidden="true">←</span> 回到今天</button>
-          <div class="account-actions">
-            <span id="history-account-label" class="account-label"></span>
-            <button id="sign-out-button" class="text-link" type="button">登出</button>
-          </div>
-        </header>
-        <div class="history-page">
-          <h1 id="history-title">過去的日子</h1>
-          <div id="history-list" class="history-list"></div>
-          <section id="migration-panel" class="migration-panel" aria-labelledby="migration-title" hidden>
-            <h2 id="migration-title">這台裝置上的舊日記</h2>
-            <p>發現尚未同步的舊日記。確認登入帳號後，可匯入雲端。</p>
-            <button id="migration-button" class="quiet-button" type="button">匯入這台裝置的舊日記</button>
-          </section>
-          <section class="data-management" aria-labelledby="data-management-title">
-            <h2 id="data-management-title">資料管理</h2>
-            <div class="data-actions">
-              <button id="export-button" class="quiet-button" type="button">匯出備份</button>
-              <button id="import-button" class="quiet-button" type="button">從備份還原</button>
-              <button id="sign-out-secondary" class="quiet-button" type="button">登出</button>
-              <input id="import-file" type="file" accept="application/json,.json" hidden />
-            </div>
-            <p id="data-message" class="data-message" role="status" aria-live="polite"></p>
-          </section>
+      <section class="backup-section" aria-labelledby="backup-heading">
+        <h2 id="backup-heading">備份</h2>
+        <p>資料只存在此裝置的這個瀏覽器中。清除網站資料可能會遺失筆記，請定期匯出 JSON 備份。</p>
+        <div class="backup-actions">
+          <button id="export-button" class="quiet-button" type="button" disabled>匯出 JSON</button>
+          <button id="import-button" class="quiet-button" type="button" disabled>匯入 JSON</button>
+          <input id="import-file" type="file" accept="application/json,.json" hidden />
         </div>
+        <p id="data-status" class="status" role="status" aria-live="polite"></p>
+        <details class="legacy-help">
+          <summary>搬移舊版筆記</summary>
+          <p>這台瀏覽器若有更早的本機版資料，會自動複製到新版，原資料仍會保留。Supabase 雲端筆記不會自動下載；請先到舊版匯出頁登入並下載，再回來匯入。</p>
+          <a href="legacy-cloud-export.html">開啟舊雲端筆記匯出頁</a>
+        </details>
       </section>
     </main>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js"></script>
+    <dialog id="import-dialog" aria-labelledby="import-title">
+      <form method="dialog" class="dialog-card">
+        <h2 id="import-title">確認匯入</h2>
+        <p id="import-summary"></p>
+        <div id="conflict-list" class="conflict-list"></div>
+        <div class="dialog-actions">
+          <button id="import-cancel" class="quiet-button" value="cancel">取消</button>
+          <button id="import-skip" class="quiet-button" value="skip">保留目前版本</button>
+          <button id="import-overwrite" class="primary-button" value="overwrite">以備份覆蓋衝突</button>
+        </div>
+      </form>
+    </dialog>
+    <noscript>此筆記工具需要 JavaScript 才能在瀏覽器內保存資料。</noscript>
     <script src="app.js" defer></script>
   </body>
 </html>
